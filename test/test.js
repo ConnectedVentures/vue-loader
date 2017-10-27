@@ -34,7 +34,7 @@ describe('vue-loader', function () {
 
   function getFile (file, cb) {
     fs.readFile(path.resolve(outputDir, file), 'utf-8', function (err, data) {
-      expect(err).to.be.not.exist
+      expect(err).to.not.exist
       cb(data)
     })
   }
@@ -221,6 +221,27 @@ describe('vue-loader', function () {
     })
   })
 
+  it('extract CSS by extract-text-webpack-plugin 2', function (done) {
+    webpack(Object.assign({}, globalConfig, {
+      entry: './test/fixtures/extract-css.vue',
+      vue: {
+        loaders: {
+          css: [{ loader: ExtractTextPlugin.loader({ remove: true }) }, { loader: 'css-loader' }],
+          stylus: [{ loader: ExtractTextPlugin.loader({ remove: true }) }, { loader: 'css-loader?sourceMap' }, { loader: 'stylus-loader' }]
+        }
+      },
+      plugins: [
+        new ExtractTextPlugin('test.output2.css')
+      ]
+    }), function (err, stats) {
+      expect(stats.compilation.errors).to.be.empty
+      getFile('test.output2.css', function (data) {
+        expect(data).to.contain('h1 {\n  color: #f00;\n}\n\n\n\n\n\n\nh2 {\n  color: green;\n}')
+        done()
+      })
+    })
+  })
+
   it('dependency injection', function (done) {
     test({
       entry: './test/fixtures/inject.js'
@@ -273,6 +294,39 @@ describe('vue-loader', function () {
     }, function (window) {
       var style = window.document.querySelector('style').textContent
       expect(style).to.contain('h1 {\n  color: red;\n  font-size: 14px\n}')
+      done()
+    })
+  })
+
+  it('css-modules', function (done) {
+    test({
+      entry: './test/fixtures/css-modules.vue'
+    }, function (window) {
+      var module = window.vueModule
+
+      // get local class name
+      var className = module.computed.style().red
+      expect(className).to.match(/_/)
+
+      // class name in style
+      var style = [].slice.call(window.document.querySelectorAll('style')).map(function (style) {
+        return style.textContent
+      }).join('\n')
+      expect(style).to.contain('.' + className + ' {\n  color: red;\n}')
+
+      // animation name
+      var match = style.match(/@keyframes\s+(\S+)\s+{/)
+      expect(match).to.have.length(2)
+      var animationName = match[1]
+      expect(animationName).to.not.equal('fade')
+      expect(style).to.contain('animation: ' + animationName + ' 1s;')
+
+      // default module + pre-processor + scoped
+      var anotherClassName = module.computed.$style().red
+      expect(anotherClassName).to.match(/_/).and.not.equal(className)
+      var id = '_v-' + hash(require.resolve('./fixtures/css-modules.vue'))
+      expect(style).to.contain('.' + anotherClassName + '[' + id + ']')
+
       done()
     })
   })
